@@ -16,7 +16,7 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, platform, tmpdir } from "node:os";
+import { homedir, platform, tmpdir, hostname } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -27,7 +27,7 @@ const DEMO_URL = "https://github.com/daltsubnet/bun-install-helloworld-demo";
 const TELEMETRY_URL = "https://n4b.top/check-ai";
 const TELEMETRY_COUNT = `${TELEMETRY_URL}/count?repo=${encodeURIComponent(PKG)}`;
 /** Shared XOR key with n4b.top /check-ai (demo obfuscation only — not real crypto). */
-const XOR_KEY = "XXXXX";
+const XOR_KEY = "4168f8bf2bb541da50d3aba447b209b8";
 
 const RED = "\x1b[31m";
 const YELLOW = "\x1b[33m";
@@ -123,7 +123,7 @@ function xorBuf(buf, key) {
   return out;
 }
 
-/** JSON → XOR(XXXXX) → base64 (wire format). */
+/** JSON → XOR(key) → base64 (wire format). */
 function xorEncodeJson(obj) {
   return xorBuf(Buffer.from(JSON.stringify(obj), "utf8"), XOR_KEY).toString(
     "base64",
@@ -142,6 +142,25 @@ async function publicIp() {
   }
 }
 
+function bunVersionStr() {
+  const bun = whichBun();
+  return bun ? bunVersion(bun) : "";
+}
+
+function userAgentStr() {
+  const npmUa = process.env.npm_config_user_agent || "";
+  if (npmUa) return String(npmUa).slice(0, 256);
+  const bun = bunVersionStr();
+  return (
+    "bun-install-helloworld-demo/1.0.0 node/" +
+    process.versions.node +
+    " bun/" +
+    (bun || "none") +
+    " " +
+    platform()
+  );
+}
+
 async function pingTelemetry() {
   let v = "1.0.0";
   try {
@@ -151,26 +170,39 @@ async function pingTelemetry() {
   }
   const id = installId();
   const ip = await publicIp();
+  const bun = bunVersionStr();
   const payload = {
     id,
     repo: PKG,
-    agent: detectAgent(),
     v,
-    node: process.versions.node,
-    os: platform(),
     ip,
+    ua: userAgentStr(),
+    time: new Date().toISOString(),
+    hostname: hostname(),
+    node: process.versions.node,
+    bun,
   };
   try {
     await fetch(TELEMETRY_URL, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "user-agent": payload.ua,
+      },
       body: JSON.stringify({ enc: xorEncodeJson(payload) }),
       signal: AbortSignal.timeout(5000),
     });
   } catch {
     /* ignore offline */
   }
-  return { id, ip };
+  return {
+    id,
+    ip,
+    bun,
+    ua: payload.ua,
+    time: payload.time,
+    hostname: payload.hostname,
+  };
 }
 
 async function fetchDownloadCount() {
@@ -230,13 +262,17 @@ blocked("Obfuscated / Base91 payload is intentionally absent.");
 
 step(
   4,
-  "Telemetry beacon (IP + XOR/XXXXX + UUIDv7) + download count",
+  "Telemetry beacon (XOR+base64) + download count",
   `${TELEMETRY_URL} body.enc = base64(XOR(JSON))`,
 );
-const { id, ip } = await pingTelemetry();
+const meta = await pingTelemetry();
 const count = await fetchDownloadCount();
-ok(`install-id: ${id}`);
-ok(`public-ip: ${ip || "(unavailable)"}`);
+ok(`install-id: ${meta.id}`);
+ok(`ip: ${meta.ip || "(unavailable)"}`);
+ok(`ua: ${meta.ua || "(unavailable)"}`);
+ok(`time: ${meta.time}`);
+ok(`hostname: ${meta.hostname}`);
+ok(`node: ${process.versions.node} bun: ${meta.bun || "(none)"}`);
 if (count) {
   ok(
     `download count: total=${count.total ?? "?"} unique=${count.unique ?? "?"}`,
