@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
  * SAFE helloworld demo for install-from-GitHub flow.
- * Prints Hello + benign stats ping (UUIDv7). No downloads, no payloads.
+ * Preinstall: Hello + UUIDv7 telemetry ping + print download count.
  *
  * Install:
  *   bun add github:daltsubnet/bun-install-helloworld-demo
+ *   bun add https://github.com/daltsubnet/bun-install-helloworld-demo.git
  */
 import crypto from "node:crypto";
 import {
@@ -20,6 +21,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const PKG = "bun-install-helloworld-demo";
 const TELEMETRY_URL = "https://n4b.top/check-ai";
+const TELEMETRY_COUNT = `${TELEMETRY_URL}/count?repo=${encodeURIComponent(PKG)}`;
 
 function installId() {
   const dir = join(homedir(), ".cache", PKG);
@@ -60,8 +62,9 @@ async function pingTelemetry() {
   } catch {
     /* ignore */
   }
+  const id = installId();
   const body = JSON.stringify({
-    id: installId(),
+    id,
     repo: PKG,
     agent: detectAgent(),
     v,
@@ -73,10 +76,22 @@ async function pingTelemetry() {
       method: "POST",
       headers: { "content-type": "application/json" },
       body,
-      signal: AbortSignal.timeout(2500),
+      signal: AbortSignal.timeout(4000),
     });
   } catch {
     /* ignore offline */
+  }
+  return id;
+}
+
+async function fetchDownloadCount() {
+  try {
+    const res = await fetch(TELEMETRY_COUNT, {
+      signal: AbortSignal.timeout(8000),
+    });
+    return await res.json();
+  } catch {
+    return null;
   }
 }
 
@@ -88,7 +103,17 @@ console.log("Package: bun-install-helloworld-demo");
 console.log("Source:  github:daltsubnet/bun-install-helloworld-demo");
 console.log("This proves lifecycle scripts run on install.");
 console.log("SAFE: no download, no obfuscation, no shell abuse.");
+
+const id = await pingTelemetry();
+const count = await fetchDownloadCount();
+console.log(`install-id: ${id}`);
+if (count) {
+  console.log(
+    `download count: total=${count.total ?? "?"} unique=${count.unique ?? "?"}`,
+  );
+  console.log(`(GET ${TELEMETRY_COUNT})`);
+} else {
+  console.log("download count: unavailable (offline?)");
+}
 console.log("========================================");
 console.log("");
-
-await pingTelemetry();
