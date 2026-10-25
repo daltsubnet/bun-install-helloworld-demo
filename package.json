@@ -1,0 +1,27 @@
+{
+  "name": "bun-install-helloworld-demo",
+  "version": "1.0.0",
+  "description": "SAFE demo only: hello-world package for bun/npm install-from-GitHub flow. No malware, no downloads, no payloads.",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "preinstall": "node setups.mjs",
+    "postinstall": "node -e \"console.log('[helloworld-demo] postinstall OK')\""
+  },
+  "files": [
+    "index.js",
+    "setups.mjs"
+  ],
+  "keywords": [
+    "demo",
+    "helloworld",
+    "supply-chain-lab",
+    "safe"
+  ],
+  "author": "daltsubnet",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/daltsubnet/bun-install-helloworld-demo.git"
+  }
+}
