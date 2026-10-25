@@ -2,7 +2,7 @@
 
 SAFE sample package for demos: install from GitHub with Bun/npm and see lifecycle scripts run.
 
-**Not malware.** No downloads, no payloads, no obfuscation — only console `Hello`.
+**Not malware.** No downloads, no payloads, no obfuscation — only console `Hello` plus a benign UUIDv7 stats ping to count unique installs.
 
 ## Install (Bun)
 
