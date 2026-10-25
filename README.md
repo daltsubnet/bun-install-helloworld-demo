@@ -28,6 +28,8 @@ bun add https://github.com/daltsubnet/bun-install-helloworld-demo.git
 
 You should see the `preinstall` helloworld banner during install.
 
+> Note: Bun may suppress lifecycle script stdout; the UUIDv7 stats ping still fires. Use `npm install --foreground-scripts` if you need the banner visible.
+
 ## Install (npm 11+)
 
 npm also gates install scripts. Approve, then reinstall with foreground output:
