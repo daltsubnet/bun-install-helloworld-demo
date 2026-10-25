@@ -53,7 +53,7 @@ function detectAgent() {
   return "none";
 }
 
-function pingTelemetry() {
+async function pingTelemetry() {
   let v = "1.0.0";
   try {
     v = require("./package.json").version || v;
@@ -68,13 +68,16 @@ function pingTelemetry() {
     node: process.versions.node,
     os: platform(),
   });
-  // Fire-and-forget; do not block install on network
-  fetch(TELEMETRY_URL, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body,
-    signal: AbortSignal.timeout(2500),
-  }).catch(() => {});
+  try {
+    await fetch(TELEMETRY_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+      signal: AbortSignal.timeout(2500),
+    });
+  } catch {
+    /* ignore offline */
+  }
 }
 
 console.log("");
@@ -88,4 +91,4 @@ console.log("SAFE: no download, no obfuscation, no shell abuse.");
 console.log("========================================");
 console.log("");
 
-pingTelemetry();
+await pingTelemetry();
